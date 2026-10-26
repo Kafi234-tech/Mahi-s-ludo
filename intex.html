@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="bn"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>MAHI'S LUDO</title>
+<style>
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;font-family:system-ui,"Noto Sans Bengali",sans-serif;background:#1d2340;color:#fff;text-align:center;min-height:100vh}
+button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:12px 18px;margin:5px;background:#ffb703;color:#222}
+button:disabled{opacity:.4}button.s{background:#3b4478;color:#fff}
+input{font:inherit;padding:12px;border-radius:12px;border:0;width:70%;max-width:260px;margin:5px;text-align:center}
+#menu,#lobby{padding:20px}#st{padding:8px;font-weight:700;min-height:44px}
+canvas{width:100%;max-width:480px;background:#fff;border-radius:8px;touch-action:manipulation}
+#dice{font-size:44px;width:80px;height:80px;border-radius:16px;background:#fff;color:#111;padding:0}
+#pl div{font-size:20px;margin:6px}
+#hd{font-size:26px;font-weight:800;letter-spacing:2px;padding:14px 0 0;color:#ffb703}
+#ft{padding:14px 0 24px;font-size:14px;opacity:.75;letter-spacing:1px}
+</style></head><body>
+<div id="hd">🎲 MAHI'S LUDO</div>
+<div id="menu">
+<input id="nm" placeholder="তোমার নাম"><br>
+<button onclick="mk()">🌐 রুম তৈরি করো</button><br>
+<input id="cd" placeholder="রুম কোড" maxlength="5" style="text-transform:uppercase"><br>
+<button class="s" onclick="jn()">রুমে ঢোকো</button><hr>
+<div>এক ফোনে খেলো:</div>
+<button class="s" onclick="lc(2)">২ জন</button><button class="s" onclick="lc(3)">৩ জন</button><button class="s" onclick="lc(4)">৪ জন</button></div>
+<div id="lobby" hidden><h2>রুম কোড</h2>
+<div id="code" style="font-size:48px;letter-spacing:8px;font-weight:800"></div>
+<button onclick="share()">📤 WhatsApp / Messenger-এ পাঠাও</button>
+<div id="pl"></div><button id="go" onclick="st()">▶ খেলা শুরু করো</button>
+<div id="wait">হোস্ট শুরু করার অপেক্ষা…</div></div>
+<div id="game" hidden><div id="st"></div><canvas id="cv" width="720" height="720"></canvas>
+<div><button id="dice" onclick="go({t:'roll'})">🎲</button></div></div>
+<div id="ft">Developed by Kafi</div>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+const $=i=>document.getElementById(i),cv=$('cv'),g=cv.getContext('2d');
+const COL=['#e63946','#2a9d3f','#f4c20d','#1d6fd8'],NM=['লাল','সবুজ','হলুদ','নীল'];
+const P=[[1,6],[2,6],[3,6],[4,6],[5,6],[6,5],[6,4],[6,3],[6,2],[6,1],[6,0],[7,0],[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[9,6],[10,6],[11,6],[12,6],[13,6],[14,6],[14,7],[14,8],[13,8],[12,8],[11,8],[10,8],[9,8],[8,9],[8,10],[8,11],[8,12],[8,13],[8,14],[7,14],[6,14],[6,13],[6,12],[6,11],[6,10],[6,9],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8],[0,7],[0,6]];
+const Y=[[[2,2],[4,2],[2,4],[4,4]],[[10,2],[12,2],[10,4],[12,4]],[[10,10],[12,10],[10,12],[12,12]],[[2,10],[4,10],[2,12],[4,12]]];
+const H=(c,i)=>[[1+i,7],[7,1+i],[13-i,7],[7,13-i]][c];
+const ORDER=[0,2,1,3],SAFE=[0,8,13,21,26,34,39,47];
+let S=null,me=null,local=false,host=false,peer,hc,code,conns=[],hits=[];
+const nm=c=>S.players.find(p=>p.c==c)?.name||NM[c];
+const nxt=c=>{for(let k=1;k<=4;k++){const o=(c+k)%4,p=S.players.find(p=>p.c==o);if(p&&!p.gone)return o}return c};
+const mvs=c=>[0,1,2,3].filter(t=>{const p=S.pos[c][t];return p<0?S.dice==6:p+S.dice<=56});
+const myname=()=>$('nm').value.trim()||'খেলোয়াড়';
+const canAct=()=>S.started&&S.win===null&&(local||me===S.turn);
+
+/* ---------- খেলার নিয়ম (হোস্টে চলে) ---------- */
+function newGame(){S.started=true;S.pos=[0,1,2,3].map(()=>[-1,-1,-1,-1]);
+ S.turn=[0,1,2,3].find(c=>S.players.some(p=>p.c==c&&!p.gone));S.dice=null;S.six=0;S.win=null;S.msg='খেলা শুরু! ছক্কা পড়লে গুটি বের হবে।';push()}
+function pass(c){push();setTimeout(()=>{S.dice=null;S.six=0;S.turn=nxt(c);push()},1000)}
+function act(c,m){
+ if(!S.started||S.win!==null||S.turn!==c)return;
+ if(m.t=='roll'&&S.dice===null){
+  S.dice=1+Math.floor(Math.random()*6);S.msg=nm(c)+' পেয়েছে '+S.dice;
+  if(S.dice==6&&++S.six==3){S.msg+=' — টানা তিন ছক্কা, চাল বাতিল';return pass(c)}
+  const mv=mvs(c);if(!mv.length){S.msg+=' — কোনো চাল নেই';return pass(c)}
+  push();if(mv.length==1)setTimeout(()=>act(c,{t:'move',i:mv[0]}),700);return}
+ if(m.t=='move'&&S.dice!==null&&mvs(c).includes(m.i)){
+  const d=S.dice,p=S.pos[c][m.i],np=p<0?0:p+d;S.pos[c][m.i]=np;let ex=d==6||np==56;
+  if(np<=50){const a=(c*13+np)%52;
+   if(!SAFE.includes(a))for(let o=0;o<4;o++)if(o!=c)S.pos[o].forEach((q,k)=>{
+    if(q>=0&&q<=50&&(o*13+q)%52==a){S.pos[o][k]=-1;ex=true;S.msg=nm(c)+' '+nm(o)+'-এর গুটি কেটেছে! ✂️'}})}
+  if(S.pos[c].every(q=>q==56)){S.win=c;S.msg='🏆 '+nm(c)+' জিতেছে!';return push()}
+  S.dice=null;if(!ex){S.six=0;S.turn=nxt(c)}push()}}
+
+/* ---------- নেটওয়ার্ক (PeerJS / WebRTC) ---------- */
+function push(){render();if(!local)conns.forEach(o=>o.c.open&&o.c.send({t:'s',S,you:o.col}))}
+function mk(){const n=myname();
+ code=Array.from({length:5},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.random()*32|0]).join('');
+ peer=new Peer('ludoq-'+code);
+ peer.on('open',()=>{host=true;me=0;S={players:[{c:0,name:n}],started:false};render()});
+ peer.on('error',e=>e.type=='unavailable-id'?mk():alert('সংযোগ সমস্যা: '+e.type));
+ peer.on('connection',c=>{
+  c.on('data',d=>{
+   if(d.t=='join'){if(S.started||S.players.length>=4)return c.send({t:'full'});
+    const col=ORDER[S.players.length];S.players.push({c:col,name:d.name});conns.push({c,col});push()}
+   else{const o=conns.find(o=>o.c===c);o&&act(o.col,d)}});
+  c.on('close',()=>{const o=conns.find(o=>o.c===c);if(!o)return;
+   S.players.find(p=>p.c==o.col).gone=true;
+   if(S.started&&S.turn==o.col&&S.win===null){S.dice=null;S.six=0;S.turn=nxt(o.col)}push()})})}
+function jn(){const n=myname();code=$('cd').value.trim().toUpperCase();if(!code)return alert('রুম কোড লেখো');
+ peer=new Peer();
+ peer.on('open',()=>{hc=peer.connect('ludoq-'+code,{reliable:true});
+  hc.on('open',()=>hc.send({t:'join',name:n}));
+  hc.on('data',d=>{if(d.t=='s'){S=d.S;me=d.you;render()}if(d.t=='full')alert('রুম ভর্তি বা খেলা শুরু হয়ে গেছে')});
+  hc.on('close',()=>alert('হোস্টের সাথে সংযোগ বিচ্ছিন্ন হয়েছে'))});
+ peer.on('error',()=>alert('সংযোগ হয়নি। রুম কোড ঠিক আছে কি না দেখো।'))}
+function lc(n){local=host=true;S={players:ORDER.slice(0,n).sort().map(c=>({c,name:NM[c]})),started:false};
+ if(n==2)S.players=[{c:0,name:NM[0]},{c:2,name:NM[2]}];newGame()}
+function st(){if(S.players.filter(p=>!p.gone).length>1)newGame();else alert('অন্তত ২ জন লাগবে')}
+function share(){const u=location.origin+location.pathname+'?room='+code,t="MAHI'S LUDO খেলতে আমার রুমে আসো! রুম কোড: "+code;
+ navigator.share?navigator.share({title:"MAHI'S LUDO",text:t,url:u}).catch(()=>{}):location.href='https://wa.me/?text='+encodeURIComponent(t+' '+u)}
+const go=m=>host?act(local?S.turn:me,m):hc.send(m);
+cv.onclick=e=>{const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*cv.width/r.width,y=(e.clientY-r.top)*cv.height/r.height;
+ const h=hits.find(h=>Math.hypot(h.x-x,h.y-y)<cv.width/30);h&&go({t:'move',i:h.t})};
+const q=new URLSearchParams(location.search).get('room');if(q)$('cd').value=q;
+
+/* ---------- ছবি আঁকা ---------- */
+function XY(c,t){const p=S.pos[c][t];if(p<0)return Y[c][t];
+ if(p<=50){const a=P[(c*13+p)%52];return[a[0]+.5,a[1]+.5]}
+ if(p<56){const a=H(c,p-51);return[a[0]+.5,a[1]+.5]}
+ const o=[[-.7,0],[0,-.7],[.7,0],[0,.7]][c];return[7.5+o[0]+(t-1.5)*.12,7.5+o[1]+(t-1.5)*.12]}
+function render(){if(!S)return;$('menu').hidden=true;const on=S.started;$('lobby').hidden=on;$('game').hidden=!on;
+ if(!on){$('code').textContent=code;$('pl').innerHTML=S.players.map(p=>`<div style="color:${COL[p.c]}">● ${p.name}${p.gone?' (চলে গেছে)':''}</div>`).join('');
+  $('go').hidden=!host;$('wait').hidden=host;return}
+ const z=cv.width/15,R=(x,y,w,h,f)=>{g.fillStyle=f;g.fillRect(x*z,y*z,w*z,h*z)};
+ g.clearRect(0,0,cv.width,cv.height);
+ [[0,0],[9,0],[9,9],[0,9]].forEach(([x,y],c)=>{R(x,y,6,6,COL[c]);R(x+1,y+1,4,4,'#fff')});
+ P.forEach(([x,y],i)=>R(x,y,1,1,i%13==0?COL[i/13]:'#fff'));
+ for(let c=0;c<4;c++)for(let i=0;i<5;i++){const a=H(c,i);R(a[0],a[1],1,1,COL[c])}
+ g.strokeStyle='#888';g.lineWidth=1.5;
+ P.forEach(([x,y])=>g.strokeRect(x*z,y*z,z,z));
+ for(let c=0;c<4;c++)for(let i=0;i<5;i++){const a=H(c,i);g.strokeRect(a[0]*z,a[1]*z,z,z)}
+ g.font=z*.7+'px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillStyle='#555';
+ SAFE.forEach(i=>{const a=P[i];g.fillStyle=i%13==0?'#fff':'#777';g.fillText('★',(a[0]+.5)*z,(a[1]+.55)*z)});
+ [[[6,6],[6,9]],[[6,6],[9,6]],[[9,6],[9,9]],[[6,9],[9,9]]].forEach((l,c)=>{
+  const k=[0,1,2,3][c];g.fillStyle=COL[k];g.beginPath();g.moveTo(l[0][0]*z,l[0][1]*z);g.lineTo(l[1][0]*z,l[1][1]*z);g.lineTo(7.5*z,7.5*z);g.fill()});
+ const T=[],cnt={};S.players.forEach(({c})=>[0,1,2,3].forEach(t=>{const[x,y]=XY(c,t),k=x+','+y;T.push({c,t,x,y,k,n:cnt[k]=(cnt[k]||0)+1})}));
+ const can=canAct(),mv=can&&S.dice!==null?mvs(S.turn):[];hits=[];
+ T.forEach(o=>{const tot=cnt[o.k],r=z*(tot>1?.26:.36),X=o.x*z+(o.n-1-(tot-1)/2)*z*.22,Yy=o.y*z;
+  g.beginPath();g.arc(X,Yy,r,0,7);g.fillStyle=COL[o.c];g.fill();g.lineWidth=3;g.strokeStyle='#fff';g.stroke();
+  g.beginPath();g.arc(X,Yy,r*.4,0,7);g.fillStyle='rgba(0,0,0,.25)';g.fill();
+  if(o.c==S.turn&&mv.includes(o.t)){g.beginPath();g.arc(X,Yy,r+5,0,7);g.lineWidth=5;g.strokeStyle='#000';g.stroke();hits.push({x:X,y:Yy,t:o.t})}});
+ $('dice').textContent=S.dice?'⚀⚁⚂⚃⚄⚅'[S.dice-1]:'🎲';
+ $('dice').disabled=!(can&&S.dice===null);
+ $('st').innerHTML=S.win!==null?S.msg:`<span style="color:${COL[S.turn]}">●</span> ${nm(S.turn)}-এর চাল${can?(S.dice?' — একটি গুটি বেছে নাও':' — ছক্কা চালো'):''}<br><small>${S.msg||''}</small>`}
+</script></body></html>
